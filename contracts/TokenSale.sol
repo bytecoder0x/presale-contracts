@@ -32,7 +32,7 @@ contract TokenSale is Ownable {
         uint _tokenPrice,
         address _priceFeed
     ) Ownable(initialOwner) {
-        token = new SolarGreen(initialOwner);
+        token = new SolarGreen(initialOwner, initialOwner);
         usdt = IERC20(_ustd);
         BASE_MULTIPLIER = _precision;
 
