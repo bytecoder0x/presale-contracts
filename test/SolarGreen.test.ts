@@ -3,101 +3,104 @@ import { expect } from "chai";
 import { ethers } from "hardhat";
 
 describe("SolarGreen", function () {
-  async function deploy() {
-    const [owner, buyer, spender, newOwner] = await ethers.getSigners();
+	async function deploy() {
+		const [owner, buyer, spender, newOwner] = await ethers.getSigners();
 
-    const tokensForPurchase = ethers.parseUnits("50000000", 18);
+		const tokensForPurchase = ethers.parseUnits("50000000", 18);
 
-    const SolarGreen = await ethers.getContractFactory("SolarGreen", owner);
-    const token = await SolarGreen.deploy(owner.address, owner.address);
+		const SolarGreen = await ethers.getContractFactory("SolarGreen", owner);
+		const token = await SolarGreen.deploy(owner.address);
 
-    await token.mint(owner.address, tokensForPurchase);
+		await token.mint(owner.address, tokensForPurchase);
 
-    return { owner, buyer, spender, newOwner, token };
-  }
+		return { owner, buyer, spender, newOwner, token };
+	}
 
-  it("owner must be admin", async function () {
-    const { owner, token } = await loadFixture(deploy);
+	it("owner must be admin", async function () {
+		const { owner, token } = await loadFixture(deploy);
 
-    expect(await token.hasRole(await token.DEFAULT_ADMIN_ROLE(), owner.address)).to.be.true;
-    expect(await token.getAddress()).to.be.properAddress;
-  });
+		expect(await token.hasRole(await token.DEFAULT_ADMIN_ROLE(), owner.address)).to.be.true;
+		expect(await token.getAddress()).to.be.properAddress;
+	});
 
-  it("should be correct supply 100 mln", async function () {
-    const { token } = await loadFixture(deploy);
+	it("should be correct supply 100 mln", async function () {
+		const { token } = await loadFixture(deploy);
 
-    expect(await token.totalSupply()).to.eq(await token.initiallySupply());
-  });
+		const mintedAmount = ethers.parseUnits("50000000", 18);
 
-  it("correct transfer to", async function () {
-    const { buyer, token } = await loadFixture(deploy);
-    const amount = ethers.parseUnits("3", 18);
+		expect(await token.initiallySupply()).to.eq(ethers.parseUnits("100000000", 18));
+		expect(await token.totalSupply()).to.eq((await token.initiallySupply()) + mintedAmount);
+	});
 
-    await token.transfer(buyer.address, amount);
+	it("correct transfer to", async function () {
+		const { buyer, token } = await loadFixture(deploy);
+		const amount = ethers.parseUnits("3", 18);
 
-    const balanceBuyer = await token.balanceOf(buyer.address);
-    expect(balanceBuyer).to.equal(amount);
-  });
+		await token.transfer(buyer.address, amount);
 
-  it("correct transfer from", async function () {
-    const { owner, buyer, spender, token } = await loadFixture(deploy);
+		const balanceBuyer = await token.balanceOf(buyer.address);
+		expect(balanceBuyer).to.equal(amount);
+	});
 
-    const amount = ethers.parseUnits("8", 18);
+	it("correct transfer from", async function () {
+		const { owner, buyer, spender, token } = await loadFixture(deploy);
 
-    await token.approve(spender.address, amount);
-    await token.connect(spender).transferFrom(owner.address, buyer.address, amount);
+		const amount = ethers.parseUnits("8", 18);
 
-    const balanceBuyer = await token.balanceOf(buyer.address);
+		await token.approve(spender.address, amount);
+		await token.connect(spender).transferFrom(owner.address, buyer.address, amount);
 
-    expect(await token.allowance(owner.address, spender.address));
-    expect(balanceBuyer).to.eq(amount);
-  });
+		const balanceBuyer = await token.balanceOf(buyer.address);
 
-  it("allow to mint new token", async function () {
-    const { owner, token } = await loadFixture(deploy);
+		expect(await token.allowance(owner.address, spender.address));
+		expect(balanceBuyer).to.eq(amount);
+	});
 
-    const amount = ethers.parseUnits("10", 18);
-    const expectedTotalSupply = (await token.totalSupply()) + amount;
+	it("allow to mint new token", async function () {
+		const { owner, token } = await loadFixture(deploy);
 
-    await token.mint(owner.address, amount);
+		const amount = ethers.parseUnits("10", 18);
+		const expectedTotalSupply = (await token.totalSupply()) + amount;
 
-    expect(await token.totalSupply()).to.eq(expectedTotalSupply);
-  });
+		await token.mint(owner.address, amount);
 
-  it("allow to burn token", async function () {
-    const { token } = await loadFixture(deploy);
+		expect(await token.totalSupply()).to.eq(expectedTotalSupply);
+	});
 
-    const amount = ethers.parseUnits("8", 18);
-    const expectedTotalSupply = (await token.totalSupply()) - amount;
+	it("allow to burn token", async function () {
+		const { token } = await loadFixture(deploy);
 
-    await token.burn(amount);
+		const amount = ethers.parseUnits("8", 18);
+		const expectedTotalSupply = (await token.totalSupply()) - amount;
 
-    expect(await token.totalSupply()).to.eq(expectedTotalSupply);
-  });
+		await token.burn(amount);
 
-  it("only blacklister should add and remove address to blacklist", async function () {
-    const { buyer: blacklister, spender, token } = await loadFixture(deploy);
+		expect(await token.totalSupply()).to.eq(expectedTotalSupply);
+	});
 
-    await token.addBlacklister(blacklister.address);
-    await token.connect(blacklister).addToBlacklist(spender.address);
+	it("only blacklister should add and remove address to blacklist", async function () {
+		const { buyer: blacklister, spender, token } = await loadFixture(deploy);
 
-    expect(await token.isBlacklisted(spender.address)).to.eq(true);
+		await token.grantRole(await token.BLACKLISTER(), blacklister.address);
+		await token.connect(blacklister).addToBlacklist(spender.address);
 
-    await token.connect(blacklister).removeFromBlacklist(spender.address);
+		expect(await token.blacklist(spender.address)).to.eq(true);
 
-    expect(await token.isBlacklisted(spender.address)).to.eq(false);
-  });
+		await token.connect(blacklister).removeFromBlacklist(spender.address);
 
-  it("only owner can add and remove a blacklister", async function () {
-    const { owner, buyer: blacklister, token } = await loadFixture(deploy);
+		expect(await token.blacklist(spender.address)).to.eq(false);
+	});
 
-    await token.addBlacklister(blacklister.address);
+	it("only owner can add and remove a blacklister", async function () {
+		const { owner, buyer: blacklister, token } = await loadFixture(deploy);
 
-    expect(await token.hasRole(await token.BLACKLISTER(), blacklister.address)).to.be.true;
+		await token.grantRole(await token.BLACKLISTER(), blacklister.address);
 
-    await token.removeBlacklister(blacklister.address);
+		expect(await token.hasRole(await token.BLACKLISTER(), blacklister.address)).to.be.true;
 
-    expect(await token.hasRole(await token.BLACKLISTER(), blacklister.address)).to.be.false;
-    await expect(token.connect(blacklister).addBlacklister(owner.address)).to.be.reverted;
-  });
+		await token.revokeRole(await token.BLACKLISTER(), blacklister.address);
+
+		expect(await token.hasRole(await token.BLACKLISTER(), blacklister.address)).to.be.false;
+		await expect(token.connect(blacklister).addToBlacklist(owner.address)).to.be.reverted;
+	});
 });
