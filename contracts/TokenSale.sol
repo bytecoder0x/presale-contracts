@@ -39,6 +39,7 @@ contract TokenSale is Ownable, ITokenSale {
         if (currentTime < startAt) revert SaleNotStarted();
         if (currentTime > endsAt) revert SaleEnded();
         if (!saleActive) revert SaleNotActive();
+        if (SALE_TOKEN.blacklist(_buyer)) revert BuyerBlacklisted();
         if (userBalances[_buyer] + _amountSaleTokens > limitSaleTokensPerUser) revert LimitExceeded();
         if (_amountSaleTokens == 0) revert InvalidAmount();
         if (_amountSaleTokens > availableSaleTokens) revert InsufficientBalance();

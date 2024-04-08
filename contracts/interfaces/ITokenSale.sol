@@ -19,6 +19,7 @@ interface ITokenSale {
     error InvalidPrice();
     error VestingNotEnded();
     error ZeroClaimAmount();
+    error BuyerBlacklisted();
 
     event Bought(uint256 _amount, address indexed _buyer);
     event Claimed(uint256 _amount, address indexed _holder);
