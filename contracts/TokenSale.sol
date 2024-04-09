@@ -78,11 +78,12 @@ contract TokenSale is Ownable, ITokenSale {
     /// @param _amount The amount of SALE_TOKENs to purchase.
     function buyWithERC20(uint256 _amount) external checkConditionsForPurchase(msg.sender, _amount) {
         uint256 purchaseTokenAmount = getPurchaseTokenAmount(_amount);
-        PURCHASE_TOKEN.safeTransferFrom(msg.sender, address(this), purchaseTokenAmount);
 
         availableSaleTokens -= _amount;
         userBalances[msg.sender] += _amount;
         emit Bought(_amount, msg.sender);
+
+        PURCHASE_TOKEN.safeTransferFrom(msg.sender, address(this), purchaseTokenAmount);
     }
 
     /// @notice Allows users to buy SALE_TOKENs using Native Token.
@@ -91,12 +92,12 @@ contract TokenSale is Ownable, ITokenSale {
         uint256 nativeTokenAmount = getNativeTokenAmount(_amount);
         if (msg.value < nativeTokenAmount) revert InsufficientPayment();
 
-        uint256 excess = msg.value - nativeTokenAmount;
-        if (excess > 0) payable(msg.sender).transfer(excess);
-
         availableSaleTokens -= _amount;
         userBalances[msg.sender] += _amount;
         emit Bought(_amount, msg.sender);
+
+        uint256 excess = msg.value - nativeTokenAmount;
+        if (excess > 0) _sendNativeToken(msg.sender, excess);
     }
 
     /// @notice Allows SALE_TOKEN holders to claim their SALE_TOKENs after the vesting period ends.
@@ -108,9 +109,9 @@ contract TokenSale is Ownable, ITokenSale {
         if (userSaleTokens == 0) revert ZeroClaimAmount();
 
         userBalances[_holder] -= userSaleTokens;
-        SALE_TOKEN.transfer(_holder, userSaleTokens);
-
         emit Claimed(userSaleTokens, _holder);
+
+        IERC20(SALE_TOKEN).safeTransfer(_holder, userSaleTokens);
     }
 
     /// @notice Starts the SALE_TOKEN sale.
@@ -159,14 +160,14 @@ contract TokenSale is Ownable, ITokenSale {
 
     /// @notice Allows the contract owner to withdraw all native token from the contract.
     function withdrawAllNativeToken() external onlyOwner {
-        payable(msg.sender).transfer(address(this).balance);
+        _sendNativeToken(msg.sender, address(this).balance);
     }
 
     /// @notice Allows the contract owner to withdraw native token from the contract.
     /// @param _to The address to transfer the token to.
     /// @param _amount The amount of the token to withdraw.
     function withdrawNativeToken(address _to, uint256 _amount) external onlyOwner {
-        payable(_to).transfer(_amount);
+        _sendNativeToken(_to, _amount);
     }
 
     /// @notice Allows the contract owner to withdraw PURCHASE_TOKEN from the contract.
@@ -204,6 +205,14 @@ contract TokenSale is Ownable, ITokenSale {
     function getNativeTokenAmount(uint256 _amount) public view returns (uint256 nativeTokenAmount) {
         uint256 purchaseTokenAmount = getPurchaseTokenAmount(_amount);
         nativeTokenAmount = (purchaseTokenAmount * PURCHASE_TOKEN_PRECISION) / getLatestPrice();
+    }
+
+    /// @notice Sends native token to the address.
+    /// @param _to The address to send the native token to.
+    /// @param _amount The amount of the native token to send.
+    function _sendNativeToken(address _to, uint256 _amount) private {
+        (bool success, ) = _to.call{value: _amount}("");
+        if (!success) revert NativeTransferFailed();
     }
 
     /// @notice Checks if an address is a contract.
