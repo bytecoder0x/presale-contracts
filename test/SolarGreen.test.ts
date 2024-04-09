@@ -28,8 +28,8 @@ describe("SolarGreen", function () {
 
 		const mintedAmount = ethers.parseUnits("50000000", 18);
 
-		expect(await token.initiallySupply()).to.eq(ethers.parseUnits("100000000", 18));
-		expect(await token.totalSupply()).to.eq((await token.initiallySupply()) + mintedAmount);
+		expect(await token.INITIAL_SUPPLY()).to.eq(ethers.parseUnits("100000000", 18));
+		expect(await token.totalSupply()).to.eq((await token.INITIAL_SUPPLY()) + mintedAmount);
 	});
 
 	it("correct transfer to", async function () {

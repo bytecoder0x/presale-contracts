@@ -37,7 +37,7 @@ describe("TokenSale", function () {
     await shop.startSale();
 
     const saleEnd = (await time.latest()) + time.duration.weeks(5);
-    await shop.setSaleEndTime(BigInt(saleEnd) - (await shop.startAt()));
+    await shop.setSaleEndTime(BigInt(saleEnd) - (await shop.START_AT()));
     await shop.setVestingEndTime(saleEnd + time.duration.days(30));
 
     return { owner, buyer, spender, shop, token, usdt };
@@ -133,7 +133,7 @@ describe("TokenSale", function () {
 
       const duration = 1000;
 
-      const expectedSaleEndTime = (await shop.startAt()) + BigInt(duration);
+      const expectedSaleEndTime = (await shop.START_AT()) + BigInt(duration);
 
       const tx = await shop.setSaleEndTime(duration);
 

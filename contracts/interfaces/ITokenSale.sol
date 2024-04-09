@@ -25,24 +25,22 @@ interface ITokenSale {
     event Claimed(uint256 _amount, address indexed _holder);
     event SalePaused(uint256 _timestamp);
     event SaleUnPaused(uint256 _timestamp);
-    event WithdrawPurchaseToken(uint256 _amount, uint256 _timestamp);
-    event WithdrawEth(uint256 _amount, uint256 _timestamp);
     event UpdatedSaleEndTime(uint256 _newTime);
     event UpdatedVestingEndTime(uint256 _newTime);
     event UpdatedSaleTokenPrice(uint256 _newPrice);
 
-    function userBalances(address) external view returns (uint256);
+    function LIMIT_SALE_TOKENS_PER_USER() external view returns (uint256);
+    function START_AT() external view returns (uint256);
     function SALE_TOKEN() external view returns (ISolarGreen);
     function PURCHASE_TOKEN() external view returns (IERC20);
     function PURCHASE_TOKEN_PRECISION() external view returns (uint256);
-    function limitSaleTokensPerUser() external view returns (uint256);
-    function startAt() external view returns (uint256);
+    function PRICE_FEED() external view returns (AggregatorV3Interface);
     function endsAt() external view returns (uint256);
     function vestingEnd() external view returns (uint256);
     function availableSaleTokens() external view returns (uint256);
     function saleTokenPrice() external view returns (uint256);
     function saleActive() external view returns (bool);
-    function PRICE_FEED() external view returns (AggregatorV3Interface);
+    function userBalances(address) external view returns (uint256);
 
     function buyWithERC20(uint256 _amount) external;
     function buyWithNative(uint256 _amount) external payable;
@@ -53,11 +51,11 @@ interface ITokenSale {
     function updateSaleTokenPrice(uint256 _newPrice) external;
     function setSaleEndTime(uint256 _newDuration) external;
     function setVestingEndTime(uint256 _newTime) external;
-    function getLatestPrice() external view returns (uint256);
-    function getPurchaseTokenAmount(uint256 _amount) external view returns (uint256 purchaseTokenAmount);
-    function getNativeTokenAmount(uint256 _amount) external view returns (uint256 nativeTokenAmount);
     function withdrawAllNativeToken() external;
     function withdrawNativeToken(address _to, uint256 _amount) external;
     function withdrawAllPurchaseToken() external;
     function withdrawTokens(address _token, address _to, uint256 _amount) external;
+    function getLatestPrice() external view returns (uint256);
+    function getPurchaseTokenAmount(uint256 _amount) external view returns (uint256 purchaseTokenAmount);
+    function getNativeTokenAmount(uint256 _amount) external view returns (uint256 nativeTokenAmount);
 }

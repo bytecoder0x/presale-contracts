@@ -14,33 +14,35 @@ import {ITokenSale} from "./interfaces/ITokenSale.sol";
 contract TokenSale is Ownable, ITokenSale {
     using SafeERC20 for IERC20;
 
-    mapping(address => uint256) public userBalances;
+    uint256 public constant LIMIT_SALE_TOKENS_PER_USER = 50_000 ether;
+    uint256 public constant START_AT = 1710428400; // Thu Mar 14 2024 17:00:00
+    int256 private constant PRICE_FEED_MULTIPLIER = 10 ** 10; // price feed has 8 decimals
 
     ISolarGreen public immutable SALE_TOKEN;
     IERC20 public immutable PURCHASE_TOKEN;
     uint256 public immutable PURCHASE_TOKEN_PRECISION;
 
-    uint256 public constant limitSaleTokensPerUser = 50_000 ether;
-    uint256 public constant startAt = 1710428400; // Thu Mar 14 2024 17:00:00
-    uint256 public endsAt = startAt + 5 weeks;
-    uint256 public vestingEnd = 1735682399; // Tue Dec 31 2024 23:59:59
-    uint256 public availableSaleTokens = 50_000_000 ether;
-    uint256 public saleTokenPrice;
-    bool public saleActive = false;
-
     /// @notice The price feed for the purchase token.
     AggregatorV3Interface public immutable PRICE_FEED;
 
+    uint256 public endsAt = START_AT + 5 weeks;
+    uint256 public vestingEnd = 1735682399; // Tue Dec 31 2024 23:59:59
+    uint256 public availableSaleTokens = 50_000_000 ether;
+    uint256 public saleTokenPrice;
+    bool public saleActive;
+
+    mapping(address => uint256) public userBalances;
+
     /// @notice Verifies the purchase conditions for the buyer.
     /// @param _buyer The address of the buyer.
-    /// @param _amountSaleTokens The amount of SALE_TOKENs to be purchased.      
+    /// @param _amountSaleTokens The amount of SALE_TOKENs to be purchased.
     modifier checkConditionsForPurchase(address _buyer, uint256 _amountSaleTokens) {
         uint256 currentTime = block.timestamp;
-        if (currentTime < startAt) revert SaleNotStarted();
+        if (currentTime < START_AT) revert SaleNotStarted();
         if (currentTime > endsAt) revert SaleEnded();
         if (!saleActive) revert SaleNotActive();
         if (SALE_TOKEN.blacklist(_buyer)) revert BuyerBlacklisted();
-        if (userBalances[_buyer] + _amountSaleTokens > limitSaleTokensPerUser) revert LimitExceeded();
+        if (userBalances[_buyer] + _amountSaleTokens > LIMIT_SALE_TOKENS_PER_USER) revert LimitExceeded();
         if (_amountSaleTokens == 0) revert InvalidAmount();
         if (_amountSaleTokens > availableSaleTokens) revert InsufficientBalance();
 
@@ -102,13 +104,13 @@ contract TokenSale is Ownable, ITokenSale {
     function claimTokens(address _holder) external {
         if (block.timestamp < vestingEnd) revert VestingNotEnded();
 
-        uint256 _userSaleTokens = userBalances[_holder];
-        if (_userSaleTokens == 0) revert ZeroClaimAmount();
+        uint256 userSaleTokens = userBalances[_holder];
+        if (userSaleTokens == 0) revert ZeroClaimAmount();
 
-        userBalances[_holder] -= _userSaleTokens;
-        SALE_TOKEN.transfer(_holder, _userSaleTokens);
+        userBalances[_holder] -= userSaleTokens;
+        SALE_TOKEN.transfer(_holder, userSaleTokens);
 
-        emit Claimed(_userSaleTokens, _holder);
+        emit Claimed(userSaleTokens, _holder);
     }
 
     /// @notice Starts the SALE_TOKEN sale.
@@ -144,7 +146,7 @@ contract TokenSale is Ownable, ITokenSale {
     /// @notice Sets the end time of the SALE_TOKEN sale.
     /// @param _newDuration The new duration (in seconds) for the SALE_TOKEN sale.
     function setSaleEndTime(uint256 _newDuration) external onlyOwner {
-        endsAt = _newDuration + startAt;
+        endsAt = _newDuration + START_AT;
         emit UpdatedSaleEndTime(endsAt);
     }
 
@@ -155,12 +157,37 @@ contract TokenSale is Ownable, ITokenSale {
         emit UpdatedVestingEndTime(vestingEnd);
     }
 
+    /// @notice Allows the contract owner to withdraw all native token from the contract.
+    function withdrawAllNativeToken() external onlyOwner {
+        payable(msg.sender).transfer(address(this).balance);
+    }
+
+    /// @notice Allows the contract owner to withdraw native token from the contract.
+    /// @param _to The address to transfer the token to.
+    /// @param _amount The amount of the token to withdraw.
+    function withdrawNativeToken(address _to, uint256 _amount) external onlyOwner {
+        payable(_to).transfer(_amount);
+    }
+
+    /// @notice Allows the contract owner to withdraw PURCHASE_TOKEN from the contract.
+    function withdrawAllPurchaseToken() external onlyOwner {
+        PURCHASE_TOKEN.safeTransfer(msg.sender, PURCHASE_TOKEN.balanceOf(address(this)));
+    }
+
+    /// @notice Allows the contract owner to withdraw any ERC20 token from the contract.
+    /// @param _token The address of the token to withdraw.
+    /// @param _to The address to transfer the token to.
+    /// @param _amount The amount of the token to withdraw.
+    function withdrawTokens(address _token, address _to, uint256 _amount) external onlyOwner {
+        IERC20(_token).safeTransfer(_to, _amount);
+    }
+
     /// @notice Retrieves the latest price of Native Token in PURCHASE_TOKEN from the price feed.
     /// @return The latest price of Native Token in PURCHASE_TOKEN.
     function getLatestPrice() public view returns (uint256) {
         (, int price, , , ) = PRICE_FEED.latestRoundData();
         if (price < 0) revert InvalidPrice();
-        price = (price * 10 ** 10);
+        price = price * PRICE_FEED_MULTIPLIER;
         return uint256(price);
     }
 
@@ -177,31 +204,6 @@ contract TokenSale is Ownable, ITokenSale {
     function getNativeTokenAmount(uint256 _amount) public view returns (uint256 nativeTokenAmount) {
         uint256 purchaseTokenAmount = getPurchaseTokenAmount(_amount);
         nativeTokenAmount = (purchaseTokenAmount * PURCHASE_TOKEN_PRECISION) / getLatestPrice();
-    }
-
-    /// @notice Allows the contract owner to withdraw all native token from the contract.
-    function withdrawAllNativeToken() public onlyOwner {
-        payable(msg.sender).transfer(address(this).balance);
-    }
-
-    /// @notice Allows the contract owner to withdraw native token from the contract.
-    /// @param _to The address to transfer the token to.
-    /// @param _amount The amount of the token to withdraw.
-    function withdrawNativeToken(address _to, uint256 _amount) public onlyOwner {
-        payable(_to).transfer(_amount);
-    }
-
-    /// @notice Allows the contract owner to withdraw PURCHASE_TOKEN from the contract.
-    function withdrawAllPurchaseToken() public onlyOwner {
-        PURCHASE_TOKEN.safeTransfer(msg.sender, PURCHASE_TOKEN.balanceOf(address(this)));
-    }
-
-    /// @notice Allows the contract owner to withdraw any ERC20 token from the contract.
-    /// @param _token The address of the token to withdraw.
-    /// @param _to The address to transfer the token to.
-    /// @param _amount The amount of the token to withdraw.
-    function withdrawTokens(address _token, address _to, uint256 _amount) public onlyOwner {
-        IERC20(_token).safeTransfer(_to, _amount);
     }
 
     /// @notice Checks if an address is a contract.

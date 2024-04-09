@@ -12,7 +12,7 @@ contract SolarGreen is ISolarGreen, ERC20, ERC20Burnable, AccessControl {
     /// @notice Role for the blacklister
     bytes32 public constant BLACKLISTER = keccak256("BLACKLISTER");
     /// @notice Initial supply of the token
-    uint256 public initiallySupply = 100_000_000 ether;
+    uint256 public constant INITIAL_SUPPLY = 100_000_000 ether;
 
     /// @notice Mapping to track blacklisted addresses
     mapping(address => bool) public blacklist;
@@ -24,7 +24,7 @@ contract SolarGreen is ISolarGreen, ERC20, ERC20Burnable, AccessControl {
         _grantRole(DEFAULT_ADMIN_ROLE, _owner);
         _grantRole(BLACKLISTER, _owner);
 
-        _mint(_owner, initiallySupply);
+        _mint(_owner, INITIAL_SUPPLY);
     }
 
     /// @notice Mint new tokens and allocate them to a specified account
