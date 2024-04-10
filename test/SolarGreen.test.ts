@@ -103,4 +103,27 @@ describe("SolarGreen", function () {
 		expect(await token.hasRole(await token.BLACKLISTER(), blacklister.address)).to.be.false;
 		await expect(token.connect(blacklister).addToBlacklist(owner.address)).to.be.reverted;
 	});
+
+	it("cannot add twice or remove not blacklisted address", async function () {
+		const { buyer, token } = await loadFixture(deploy);
+
+		await expect(token.removeFromBlacklist(buyer.address)).to.be.revertedWithCustomError(token, "NotBlacklisted");
+
+		await token.addToBlacklist(buyer.address);
+
+		await expect(token.addToBlacklist(buyer.address)).to.be.revertedWithCustomError(token, "AlreadyBlacklisted");
+	});
+
+	it("cannot blacklist zero address", async function () {
+		const { token } = await loadFixture(deploy);
+
+		await expect(token.addToBlacklist(ethers.ZeroAddress)).to.be.revertedWithCustomError(token, "InvalidAddress");
+		await expect(token.removeFromBlacklist(ethers.ZeroAddress)).to.be.revertedWithCustomError(token, "InvalidAddress");
+	});
+
+	it("cannot deploy with zero owner", async function () {
+		const SolarGreen = await ethers.getContractFactory("SolarGreen");
+
+		await expect(SolarGreen.deploy(ethers.ZeroAddress)).to.be.revertedWithCustomError(SolarGreen, "InvalidOwner");
+	});
 });
