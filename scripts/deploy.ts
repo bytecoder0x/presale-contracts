@@ -10,12 +10,12 @@ async function main() {
   const tokensForPurchase = ethers.parseUnits("50000000", 18); // 50 mln
 
   const SolarGreen = await ethers.getContractFactory("SolarGreen", signer);
-  const token = await SolarGreen.deploy(owner, owner);
-  token.waitForDeployment();
+  const token = await SolarGreen.deploy(owner);
+  await token.waitForDeployment();
 
   const TokenSale = await ethers.getContractFactory("TokenSale", signer);
   const shop = await TokenSale.deploy(owner, usdt, priceFeed, token.target, tokenPrice);
-  shop.waitForDeployment();
+  await shop.waitForDeployment();
 
   await token.mint(shop.target, tokensForPurchase);
   await shop.startSale();
