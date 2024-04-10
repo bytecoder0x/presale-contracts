@@ -40,7 +40,7 @@ describe("TokenSale", function () {
     await shop.setSaleEndTime(BigInt(saleEnd) - (await shop.START_AT()));
     await shop.setVestingEndTime(saleEnd + time.duration.days(30));
 
-    return { owner, buyer, spender, shop, token, usdt };
+    return { owner, buyer, spender, shop, token, usdt, mockV3Aggregator };
   }
 
   it("should have an owner", async function () {
@@ -48,6 +48,23 @@ describe("TokenSale", function () {
 
     expect(await shop.owner()).to.equal(owner.address);
     expect(shop.target).to.properAddress;
+  });
+
+  it("cannot deploy with addresses that are not contracts", async function () {
+    const { owner, buyer, token, usdt, mockV3Aggregator } = await loadFixture(deploy);
+
+    const TokenSale = await ethers.getContractFactory("TokenSale", owner);
+    const tokenPrice = ethers.parseUnits("7", 16);
+
+    await expect(
+      TokenSale.deploy(owner.address, buyer.address, mockV3Aggregator.target, token.target, tokenPrice)
+    ).to.be.revertedWithCustomError(TokenSale, "InvalidPurchaseToken");
+    await expect(
+      TokenSale.deploy(owner.address, usdt.target, mockV3Aggregator.target, buyer.address, tokenPrice)
+    ).to.be.revertedWithCustomError(TokenSale, "InvalidSaleToken");
+    await expect(
+      TokenSale.deploy(owner.address, usdt.target, buyer.address, token.target, tokenPrice)
+    ).to.be.revertedWithCustomError(TokenSale, "InvalidPriceFeed");
   });
 
   describe("Allowing to stop the sale", function () {
@@ -74,6 +91,22 @@ describe("TokenSale", function () {
       await shop.unPauseSale();
       const isSaleActive = await shop.saleActive();
       expect(isSaleActive).to.be.true;
+    });
+
+    it("cannot pause the sale if it is not active", async () => {
+      const { shop } = await loadFixture(deploy);
+
+      await shop.pauseSale();
+
+      await expect(shop.pauseSale()).to.be.revertedWithCustomError(shop, "SaleNotActive");
+    });
+
+    it("cannot start the sale without enough tokens on the contract", async () => {
+      const { owner, shop, token } = await loadFixture(deploy);
+
+      await shop.withdrawTokens(token.target, owner.address, ethers.parseUnits("1", 18));
+
+      await expect(shop.startSale()).to.be.revertedWithCustomError(shop, "InsufficientBalance");
     });
   });
 
@@ -152,6 +185,14 @@ describe("TokenSale", function () {
 
       expect(await shop.vestingEnd()).to.equal(expectedVestingEndTime);
       await expect(tx).to.emit(shop, "UpdatedVestingEndTime").withArgs(expectedVestingEndTime);
+    });
+
+    it("cannot get the price if the price feed returns negative value", async function () {
+      const { shop, mockV3Aggregator } = await loadFixture(deploy);
+
+      await mockV3Aggregator.updateAnswer(-1);
+
+      await expect(shop.getLatestPrice()).to.be.revertedWithCustomError(shop, "InvalidPrice");
     });
   });
 
@@ -247,6 +288,32 @@ describe("TokenSale", function () {
         shop.connect(buyer).buyWithNative(tokenAmount, txData)
       ).to.be.revertedWithCustomError(shop, "BuyerBlacklisted");
     });
+
+    it("cannot buy with not enough ETH", async function () {
+      const { buyer, shop } = await loadFixture(deploy);
+
+      const tokenAmount = ethers.parseUnits("100", 18);
+      const ethAmount = await shop.getNativeTokenAmount(tokenAmount);
+
+      const txData = { value: ethAmount - 1n };
+
+      await expect(
+        shop.connect(buyer).buyWithNative(tokenAmount, txData)
+      ).to.be.revertedWithCustomError(shop, "InsufficientPayment");
+    });
+
+    it("returns excess ETH to the buyer", async function () {
+      const { buyer, shop } = await loadFixture(deploy);
+
+      const tokenAmount = ethers.parseUnits("100", 18);
+      const ethAmount = await shop.getNativeTokenAmount(tokenAmount);
+
+      const txData = { value: ethAmount + ethers.parseUnits("1", 18) };
+
+      await expect(
+        shop.connect(buyer).buyWithNative(tokenAmount, txData)
+      ).to.changeEtherBalances([buyer, shop], [-ethAmount, ethAmount]);
+    });
   });
 
   describe("Checking the functionality of claiming tokens", function () {
@@ -285,6 +352,16 @@ describe("TokenSale", function () {
         shop.claimTokens(buyer.address)
       ).to.be.revertedWithCustomError(shop, "VestingNotEnded");
     });
+
+    it("cannot claim if nothing was bought", async function () {
+      const { buyer, shop } = await loadFixture(deploy);
+
+      await time.increaseTo((await shop.vestingEnd()) + 1n);
+
+      await expect(
+        shop.claimTokens(buyer.address)
+      ).to.be.revertedWithCustomError(shop, "ZeroClaimAmount");
+    });
   });
 
   describe("Withdrawing USDT, ETH, tokens from the contract", function () {
@@ -312,6 +389,40 @@ describe("TokenSale", function () {
       await expect(
         shop.connect(buyer).withdrawNativeToken(owner.address, ethAmount)
       ).to.be.reverted;
+    });
+
+    it("correct amount of ETH after withdraw", async function () {
+      const { owner, buyer, spender, shop } = await loadFixture(deploy);
+
+      const tokenAmount = ethers.parseUnits("100", 18);
+      const ethAmount = await shop.getNativeTokenAmount(tokenAmount);
+      const txData = { value: ethAmount };
+
+      await shop.connect(buyer).buyWithNative(tokenAmount, txData);
+
+      const partAmount = ethAmount / 4n;
+      const restAmount = ethAmount - partAmount;
+
+      await expect(
+        shop.withdrawNativeToken(spender.address, partAmount)
+      ).to.changeEtherBalances([shop, spender], [-partAmount, partAmount]);
+      await expect(
+        shop.withdrawAllNativeToken()
+      ).to.changeEtherBalances([shop, owner], [-restAmount, restAmount]);
+    });
+
+    it("cannot withdraw ETH to the contract that does not accept it", async function () {
+      const { buyer, shop, token } = await loadFixture(deploy);
+
+      const tokenAmount = ethers.parseUnits("100", 18);
+      const ethAmount = await shop.getNativeTokenAmount(tokenAmount);
+      const txData = { value: ethAmount };
+
+      await shop.connect(buyer).buyWithNative(tokenAmount, txData);
+
+      await expect(
+        shop.withdrawNativeToken(token.target, ethAmount)
+      ).to.be.revertedWithCustomError(shop, "NativeTransferFailed");
     });
 
     it("Only owner can withdraw USDT", async function () {
